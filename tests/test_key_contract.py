@@ -16,32 +16,12 @@ import secrets
 import uuid
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.test import RequestFactory
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from django_returns.views.order_return import create_return
 from django_returns.views.return_attachment import get_order_attachment
 
 factory = RequestFactory()
-
-
-@pytest.fixture(autouse=True)
-def _jwt_backend(settings):
-    """The v1 ``@authenticate`` resolves the customer through django.contrib.auth backends."""
-    settings.AUTHENTICATION_BACKENDS = [
-        "django_accounts.backends.JWTAccessBackend",
-        "django.contrib.auth.backends.ModelBackend",
-    ]
-
-
-@pytest.fixture
-def customer_jwt(db) -> str:
-    from django_accounts.models import Customer
-
-    user = get_user_model().objects.create_user(username="returner", email="returner@example.com")
-    Customer.objects.create(user=user)
-    return str(RefreshToken.for_user(user).access_token)
 
 
 def _list_returns(key: str | None, jwt: str | None = None, channel_idx: str = "any-channel"):

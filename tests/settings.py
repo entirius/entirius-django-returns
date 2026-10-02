@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+from importlib.util import find_spec
+
 import dj_database_url
 
 SECRET_KEY = "test-secret-key-for-returns"
@@ -47,6 +49,9 @@ INSTALLED_APPS = [
     "django_email",
     "django_returns",
 ]
+# Soft dependency: with django-access importable (zeno) keys are checked as access tokens.
+if find_spec("django_access"):
+    INSTALLED_APPS.append("django_access")
 
 MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",

@@ -8,6 +8,7 @@ from django.utils.html import format_html
 from django_admin_inline_paginator.admin import TabularInline
 
 from django_returns.models import APIKey, Channel, OrderReturn, OrderReturnProduct, ReturnAttachment
+from django_returns.utils.api_keys import access_installed, mask_key
 
 
 class OrderReturnProductInline(TabularInline):
@@ -45,12 +46,26 @@ class ChannelAdmin(admin.ModelAdmin):
 
 @admin.register(APIKey)
 class APIKeyAdmin(admin.ModelAdmin):
-    list_display = ["key", "created_at", "modified_at"]
-    readonly_fields = ["key", "created_at", "modified_at"]
-    search_fields = ["key"]
+    """Keys show only their last four characters; with django_access installed they are read-only (tokens rule)."""
+
+    list_display = ["masked_key", "created_at", "modified_at"]
+    exclude = ("key",)
+    readonly_fields = ["masked_key", "created_at", "modified_at"]
     list_filter = ["created_at", "modified_at"]
     ordering = ["-created_at"]
-    actions = ["generate_new_key"]
+
+    @admin.display(description="key")
+    def masked_key(self, obj) -> str:
+        return mask_key(obj.key)
+
+    def has_add_permission(self, request) -> bool:
+        return not access_installed() and super().has_add_permission(request)
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return not access_installed() and super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return not access_installed() and super().has_delete_permission(request, obj)
 
 
 @admin.register(ReturnAttachment)

@@ -21,6 +21,8 @@ from django.test import RequestFactory
 from django_returns.views.order_return import create_return
 from django_returns.views.return_attachment import get_order_attachment
 
+pytestmark = pytest.mark.usefixtures("_jwt_backend")
+
 factory = RequestFactory()
 
 

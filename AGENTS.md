@@ -11,6 +11,7 @@ Django app `django_returns`.
 | `make check` | lint + format-check (ruff) |
 | `make fix` | auto-fix lint + format |
 | `make test` | test suite (pytest + pytest-django) |
+| `make test-legacy` | test suite without django_access (legacy key path) |
 
 ## Conventions
 
@@ -31,9 +32,9 @@ src/django_returns/
 ├── models/                 # APIKey, Channel, OrderReturn, ReturnAttachment (+BaseModel)
 ├── domain/dto/             # marshmallow-dataclass DTO for order returns
 ├── views/                  # storefront API (order_return, return_attachment) — X-API-KEY guarded
-├── utils/api_keys.py       # the key check: django_access token (returns.api) when installed, else APIKey
 ├── worker/order_return.py  # status flow + confirmation e-mail (django_email)
-├── utils/                  # api decorators (django_utils), pagination
+├── utils/                  # api decorators (django_utils), pagination; api_keys.py: the key check — django_access token
+│                           # (returns.api) when installed, else APIKey
 ├── admin.py                # ModelAdmin registrations (inline paginator)
 ├── bi.py                   # BI events (bievents)
 ├── urls.py                 # mounts return API under API_BASE_URL

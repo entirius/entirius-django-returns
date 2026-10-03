@@ -12,6 +12,7 @@ called directly.
 
 import json
 import logging
+import os
 import secrets
 from datetime import timedelta
 from unittest.mock import patch
@@ -19,6 +20,8 @@ from unittest.mock import patch
 import pytest
 
 pytest.importorskip("django_access")
+if os.environ.get("ENTIRIUS_TEST_NO_ACCESS"):
+    pytest.skip("legacy path run: django_access is not installed", allow_module_level=True)
 
 from django.contrib import admin  # noqa: E402
 from django.core.management import CommandError, call_command  # noqa: E402
@@ -29,7 +32,7 @@ from django_access.services.access_service import Actor  # noqa: E402
 from django_access.services.tokens import hash_key, issue_token, revoke_token, set_token_expiry  # noqa: E402
 
 from django_returns.models import APIKey  # noqa: E402
-from django_returns.utils.api_keys import API_SCOPE  # noqa: E402
+from django_returns.utils.api_keys import API_SCOPE, key_is_valid  # noqa: E402
 from django_returns.views.order_return import create_return  # noqa: E402
 
 OTHER_MODULE_SCOPES = ["reviews.moderate", "vault.api"]
@@ -37,13 +40,15 @@ PUBLISHABLE_SCOPE = "checkout.storefront"
 API_KEY, ADMIN_KEY = "HTTP_X_API_KEY", "HTTP_X_API_ADMIN_KEY"
 SYSTEM = Actor()
 
+pytestmark = pytest.mark.usefixtures("_jwt_backend")
+
 
 @pytest.fixture
 def call(customer_jwt):
     """List returns with ``key`` in ``header``, as the customer unless ``with_jwt`` is off."""
 
-    def call(key: str, header: str = API_KEY, channel_idx: str = "any-channel", with_jwt: bool = True):
-        headers = {header: key}
+    def call(key: str | None, header: str = API_KEY, channel_idx: str = "any-channel", with_jwt: bool = True):
+        headers = {} if key is None else {header: key}
         if with_jwt:
             headers["HTTP_AUTHORIZATION"] = f"Bearer {customer_jwt}"
         return create_return(RequestFactory().get("/returns/", **headers), channel_idx=channel_idx, version="1")
@@ -75,8 +80,11 @@ def issue(db):
     return issue
 
 
-def _later(days: int):
-    return patch("django.utils.timezone.now", return_value=timezone.now() + timedelta(days=days))
+def _valid_after(raw: str, days: int) -> bool:
+    """``key_is_valid`` called directly with the clock moved on (the views would run JWT checks on that clock too)."""
+    request = RequestFactory().get("/returns/", **{API_KEY: raw})
+    with patch("django.utils.timezone.now", return_value=timezone.now() + timedelta(days=days)):
+        return key_is_valid(request)
 
 
 @pytest.mark.django_db
@@ -87,6 +95,12 @@ class TestTokenLifecycle:
         token.refresh_from_db()
         assert token.last_used_at is not None
 
+    def test_passing_request_carries_its_access_token(self, issue):
+        token, raw = issue()
+        request = RequestFactory().get("/returns/", **{API_KEY: raw})
+        assert key_is_valid(request)
+        assert request.access_token.pk == token.pk
+
     def test_revoked_token_is_refused(self, issue, call):
         token, raw = issue()
         assert _passed(call(raw))
@@ -95,24 +109,21 @@ class TestTokenLifecycle:
 
     def test_expired_token_is_refused(self, issue, call):
         _, raw = issue()
-        with _later(days=31):
-            assert _refused(call(raw))
+        assert not _valid_after(raw, days=31)
 
     def test_legacy_token_without_expiry_keeps_working(self, make_api_key, call):
         raw = make_api_key()
         token = ApiToken.objects.get(key_hash=hash_key(raw))
         assert (token.legacy, token.expires_at, token.scopes) == (True, None, [API_SCOPE])
         assert _passed(call(raw))
-        with _later(days=3650):
-            assert _passed(call(raw))
+        assert _valid_after(raw, days=3650)
 
     def test_legacy_token_past_its_team_expiry_is_refused(self, make_api_key, call):
         raw = make_api_key()
         token = ApiToken.objects.get(key_hash=hash_key(raw))
         set_token_expiry(token, expires_at=timezone.now() + timedelta(days=1), actor=SYSTEM)
         assert _passed(call(raw))
-        with _later(days=2):
-            assert _refused(call(raw))
+        assert not _valid_after(raw, days=2)
 
     def test_key_only_in_the_legacy_table_is_refused(self, call):
         raw = secrets.token_hex(32)
@@ -133,6 +144,15 @@ class TestScopeAndHeader:
 
     def test_token_in_x_api_admin_key_is_refused(self, issue, call):
         _, raw = issue()
+        assert _refused(call(raw, header=ADMIN_KEY))
+
+    def test_wrong_key_is_refused_despite_a_valid_token_in_the_admin_header(self, issue):
+        _, raw = issue()
+        request = RequestFactory().get("/returns/", **{API_KEY: "ent_api_wrong", ADMIN_KEY: raw})
+        assert not key_is_valid(request)
+
+    def test_publishable_token_in_the_admin_header_is_refused(self, issue, call):
+        _, raw = issue(PUBLISHABLE_SCOPE)
         assert _refused(call(raw, header=ADMIN_KEY))
 
     def test_token_is_not_bound_to_a_channel(self, issue, call):
@@ -160,7 +180,12 @@ def test_every_failure_gives_one_response(issue, call):
         "publishable": issue(PUBLISHABLE_SCOPE)[1],
         "legacy table only": legacy_only,
     }
+    _, valid_raw = issue()
     responses = {kind: call(raw) for kind, raw in keys.items()}
+    responses["missing"] = call(None)
+    responses["empty"] = call("")
+    responses["wrong header"] = call(valid_raw, header=ADMIN_KEY)
+    responses["over-long"] = call("ent_api_" + "a" * 5000)
     outcomes = {kind: (response.status_code, response.content) for kind, response in responses.items()}
     assert len(set(outcomes.values())) == 1, outcomes
     assert outcomes["unknown"][0] == 401

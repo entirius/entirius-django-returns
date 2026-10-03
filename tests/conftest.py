@@ -35,7 +35,7 @@ def make_api_key(db):
     return make_api_key
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _jwt_backend(settings):
     """The v1 ``@authenticate`` resolves the customer through django.contrib.auth backends."""
     settings.AUTHENTICATION_BACKENDS = [

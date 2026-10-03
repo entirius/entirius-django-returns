@@ -3,6 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 from django.contrib import admin
+from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
 from django_admin_inline_paginator.admin import TabularInline
@@ -46,16 +47,17 @@ class ChannelAdmin(admin.ModelAdmin):
 
 @admin.register(APIKey)
 class APIKeyAdmin(admin.ModelAdmin):
-    """Keys show only their last four characters; with django_access installed they are read-only (tokens rule)."""
+    """The list masks keys on both paths; with django_access installed the change page masks them and is read-only."""
 
     list_display = ["masked_key", "created_at", "modified_at"]
-    exclude = ("key",)
-    readonly_fields = ["masked_key", "created_at", "modified_at"]
     list_filter = ["created_at", "modified_at"]
     ordering = ["-created_at"]
 
+    def get_readonly_fields(self, request: HttpRequest, obj: APIKey | None = None) -> list[str]:
+        return ["masked_key" if access_installed() else "key", "created_at", "modified_at"]
+
     @admin.display(description="key")
-    def masked_key(self, obj) -> str:
+    def masked_key(self, obj: APIKey) -> str:
         return mask_key(obj.key)
 
     def has_add_permission(self, request) -> bool:

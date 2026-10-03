@@ -11,6 +11,7 @@ are global (no channel pin), and the legacy table is never read on that path —
 from types import SimpleNamespace
 
 from django.apps import apps
+from django.http import HttpRequest
 
 from django_returns.models import APIKey
 
@@ -32,7 +33,7 @@ def token_command() -> str:
     return f"manage.py access_token create --scope {API_SCOPE} --application <name> --expires-days <days>"
 
 
-def key_is_valid(request) -> bool:
+def key_is_valid(request: HttpRequest) -> bool:
     """True when X-API-KEY carries a key for ``API_SCOPE``."""
     key = request.META.get(_HEADER)
     if not key:
@@ -42,7 +43,7 @@ def key_is_valid(request) -> bool:
     return APIKey.objects.filter(key=key).exists()
 
 
-def _token_is_valid(request, key: str) -> bool:
+def _token_is_valid(request: HttpRequest, key: str) -> bool:
     """``verify_api_key`` sees only X-API-KEY: the X-API-ADMIN-KEY alias never stands in for it."""
     from django_access.services.tokens import verify_api_key
 

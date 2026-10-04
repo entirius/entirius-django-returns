@@ -597,6 +597,10 @@ def download_return_file_view(request, pk):
         return HttpResponse("Unauthorized", status=401)
 
 
+download_return_file_view.access_area = "returns.attachments"
+download_return_file_view.access_levels = {"GET": "write"}
+
+
 def download_attachment_view(request, pk):
     return_attachment = ReturnAttachment.objects.filter(id=pk).first()
     if (
@@ -608,3 +612,7 @@ def download_attachment_view(request, pk):
         return FileResponse(return_attachment.attachment)
     else:
         return HttpResponse("Unauthorized", status=401)
+
+
+download_attachment_view.access_area = "returns.attachments"
+download_attachment_view.access_levels = {"GET": "write"}

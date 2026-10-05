@@ -3,7 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 """The access path: with django_access installed the X-API-KEY is an access token (``verify_api_key``, scope
-``returns.api``). These keys are global: no channel pin.
+``returns.api``). A pinned token works on its channel only; a route without a channel accepts unpinned tokens only.
 
 Legacy keys reach it only through the import (``make_api_key``); the legacy table is never read on this path.
 The keyed views also demand the customer JWT; the module's test settings have no ROOT_URLCONF, so views are
@@ -70,12 +70,12 @@ def _refused(response) -> bool:
 
 @pytest.fixture
 def issue(db):
-    """Issue an unpinned token of one scope; a secret scope gets the expiry it must carry."""
+    """Issue a token of one scope (unpinned unless ``channel_idx``); a secret scope gets the expiry it must carry."""
     application = Application.objects.create(name="returns-tests")
 
-    def issue(scope: str = API_SCOPE) -> tuple[ApiToken, str]:
+    def issue(scope: str = API_SCOPE, channel_idx: str | None = None) -> tuple[ApiToken, str]:
         expiry = timezone.now() + timedelta(days=30)
-        return issue_token(application, scopes=[scope], channel_idx=None, expires_at=expiry, actor=SYSTEM)
+        return issue_token(application, scopes=[scope], channel_idx=channel_idx, expires_at=expiry, actor=SYSTEM)
 
     return issue
 
@@ -84,7 +84,7 @@ def _valid_after(raw: str, days: int) -> bool:
     """``key_is_valid`` called directly with the clock moved on (the views would run JWT checks on that clock too)."""
     request = RequestFactory().get("/returns/", **{API_KEY: raw})
     with patch("django.utils.timezone.now", return_value=timezone.now() + timedelta(days=days)):
-        return key_is_valid(request)
+        return key_is_valid(request, channel_idx="any-channel")
 
 
 @pytest.mark.django_db
@@ -98,7 +98,7 @@ class TestTokenLifecycle:
     def test_passing_request_carries_its_access_token(self, issue):
         token, raw = issue()
         request = RequestFactory().get("/returns/", **{API_KEY: raw})
-        assert key_is_valid(request)
+        assert key_is_valid(request, channel_idx="any-channel")
         assert request.access_token.pk == token.pk
 
     def test_revoked_token_is_refused(self, issue, call):
@@ -149,15 +149,32 @@ class TestScopeAndHeader:
     def test_wrong_key_is_refused_despite_a_valid_token_in_the_admin_header(self, issue):
         _, raw = issue()
         request = RequestFactory().get("/returns/", **{API_KEY: "ent_api_wrong", ADMIN_KEY: raw})
-        assert not key_is_valid(request)
+        assert not key_is_valid(request, channel_idx="any-channel")
 
     def test_publishable_token_in_the_admin_header_is_refused(self, issue, call):
         _, raw = issue(PUBLISHABLE_SCOPE)
         assert _refused(call(raw, header=ADMIN_KEY))
 
-    def test_token_is_not_bound_to_a_channel(self, issue, call):
+    def test_unpinned_token_works_on_every_channel(self, issue, call):
         _, raw = issue()
+        assert _passed(call(raw, channel_idx="any-channel"))
         assert _passed(call(raw, channel_idx="other-channel"))
+
+    def test_pinned_token_works_on_its_channel(self, issue, call):
+        _, raw = issue(channel_idx="any-channel")
+        assert _passed(call(raw, channel_idx="any-channel"))
+
+    def test_pinned_token_is_refused_on_another_channel(self, issue, call):
+        _, raw = issue(channel_idx="any-channel")
+        assert _refused(call(raw, channel_idx="other-channel"))
+
+    def test_pinned_token_is_refused_where_the_route_has_no_channel(self, issue):
+        _, raw = issue(channel_idx="any-channel")
+        assert not key_is_valid(RequestFactory().get("/", **{API_KEY: raw}), channel_idx=None)
+
+    def test_unpinned_token_passes_where_the_route_has_no_channel(self, issue):
+        _, raw = issue()
+        assert key_is_valid(RequestFactory().get("/", **{API_KEY: raw}), channel_idx=None)
 
     def test_token_without_customer_jwt_is_401(self, issue, call):
         _, raw = issue()

@@ -7,19 +7,14 @@ from functools import wraps
 from django_utils.api.decorators import api_view
 from django_utils.api.exceptions import Unauthorized
 
-from django_returns.models import APIKey
+from django_returns.utils.api_keys import key_is_valid
 
 
 def authorize_api(view):
-    def is_allowed(request):
-        key = request.headers.get("X-API-KEY")
-        query = APIKey.objects.filter(key=key)
-        return query.exists()
-
     @wraps(view)
     @api_view
     def _wrapped(request, *args, **kwargs):
-        passed = is_allowed(request)
+        passed = key_is_valid(request)
         if passed:
             response = view(request, *args, **kwargs)
             return response

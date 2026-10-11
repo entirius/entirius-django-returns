@@ -70,3 +70,10 @@ The test suite is an import smoke test (`tests/test_smoke.py`) — real RMA flow
 | `LOGO_URL` | `""` | logo used in e-mail templates |
 | `DAYS_TO_RETURN` | `14` | return window after the order was completed |
 | `PDF_RETURN_TEMPLATE` | module template | layout of the PDF return form |
+
+## Gotchas
+
+- The return views (candidate, extra data, create, listing, detail) read the customer's orders and returns of the
+  URL's channel only; an order or a return of another channel answers 404 `4002`.
+- The listing sorts by `SORTABLE_FIELDS` (`created_at`, `modified_at`, `status`) only; any other `sort` field
+  answers 400 `4016`.

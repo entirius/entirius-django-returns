@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Security
+
+- The return views (candidate, extra data, create, listing, detail) read the customer's orders and returns of the
+  URL's channel only (a token pinned to one channel could read the same customer's data of another one). An order
+  or a return of another channel answers 404 `4002`.
+- The returns listing sorts by `created_at`, `modified_at` or `status` only; any other `sort` field answers 400
+  `4016` (the client's field went to `order_by()` unchecked).
+
+### Changes
+
 - Access: the module declares its own access areas on its AppConfig and its admin views (copied from the
   entirius-django-access defaults; behaviour unchanged).
 - Keys verified by django-access when installed: the X-API-KEY routes check access tokens through

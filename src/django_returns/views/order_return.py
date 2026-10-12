@@ -53,6 +53,17 @@ from django_returns.worker.order_return import (
     valid_order_to_return,
 )
 
+# Fields of OrderReturn a customer may sort the listing by; the client's key never reaches order_by() unchecked.
+SORTABLE_FIELDS = frozenset({"created_at", "modified_at", "status"})
+
+
+def listing_order(sort: list[dict] | None) -> list[str]:
+    """order_by() arguments for the client's ``sort``; BadRequest 4016 for a field outside SORTABLE_FIELDS."""
+    sorters = reduce(lambda x, y: {**x, **y}, sort or [], {})
+    if set(sorters) - SORTABLE_FIELDS:
+        raise BadRequest("4016")
+    return [field if str(direction).upper() == "ASC" else f"-{field}" for field, direction in sorters.items()]
+
 
 def cleanup_auxiliary_files(pdf_path):
     pdf_dir = os.path.dirname(pdf_path)
@@ -107,7 +118,8 @@ def init_request(request, logger, channel_idx, order_id):
         raise BadRequest("4001")
 
     try:
-        order = Order.objects.get(order_id=order_id, customer=customer)
+        # The key is checked against the channel of the URL: the order has to be one of that channel.
+        order = Order.objects.get(order_id=order_id, customer=customer, channel__idx=channel_idx)
         channel = Channel.objects.get(idx=channel_idx)
         logger.add_log_param("order_id", order_id)
         logger.add_log_param("channel_idx", channel_idx)
@@ -304,17 +316,8 @@ def create_return(request, channel_idx: str, *args, **kwargs):
         """
         Wyświetla uproszczoną listę zwrotów customera.
         """
-        order_by = None
-        if params.sort:
-            sorters = reduce(lambda x, y: {**x, **y}, params.sort)
-            order_by = []
-            for sorter, direction in sorters.items():
-                if direction.upper() == "ASC":
-                    order_by.append(sorter)
-                else:
-                    order_by.append(f"-{sorter}")
-
-        orders_return = OrderReturn.objects.filter(customer=customer)
+        order_by = listing_order(params.sort)
+        orders_return = OrderReturn.objects.filter(customer=customer, order__channel__idx=channel_idx)
         if order_by:
             orders_return = orders_return.order_by(*order_by)
         response_data = []

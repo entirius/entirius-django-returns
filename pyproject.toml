@@ -1,6 +1,6 @@
 [project]
 name = "entirius-django-returns"
-version = "3.0.0"
+version = "4.0.0"
 description = "Order returns (RMA) for Entirius checkout: return requests, attachments and PDF return forms"
 keywords = ["django", "returns", "rma", "orders", "ecommerce", "entirius"]
 classifiers = [

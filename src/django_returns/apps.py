@@ -10,3 +10,22 @@ class DjangoReturnsConfig(AppConfig):
     name = "django_returns"
     verbose_name = "Returns"
     is_volkanos = True
+    # Copied 1:1 from entirius-django-access cf538d2 catalogue defaults;
+    # the access defaults stay until this module's release.
+    access_areas = [
+        {"key": "returns.attachments", "label": "Return documents", "levels": ("write",), "sensitive": ("pii",)},
+    ]
+    access_token_scopes = [
+        {
+            "key": "returns.api",
+            "label": "Order returns",
+            "publishable": False,
+            "routes": (
+                "/api/returns/{version}/{channel_idx}/orders/{order_id}/returns",
+                "/api/returns/{version}/{channel_idx}/orders/{order_id}/returns_extra",
+                "/api/returns/{version}/{channel_idx}/returns/**",
+            ),
+        },
+    ]
+    # Every admin view carries its access_area; no route needs a path rule.
+    access_route_rules = []
